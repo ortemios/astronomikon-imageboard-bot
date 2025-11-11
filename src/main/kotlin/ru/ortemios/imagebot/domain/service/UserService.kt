@@ -1,21 +1,21 @@
 package ru.ortemios.imagebot.domain.service
 
+import ru.ortemios.imagebot.db.datasource.UserDataSource
 import ru.ortemios.imagebot.domain.entity.User
 
-class UserService {
+class UserService(private val userDataSource: UserDataSource) {
 
-    private val userGroups = mutableMapOf<String, String>() // TODO: use permanent storage
-    private val authorizedUsers = listOf("ortemios") // TODO: use permanent storage
+    private val allowedUsers = System.getenv("ALLOWED_USERS").split(",")
 
     fun hasAccess(user: User): Boolean {
-        return authorizedUsers.contains(user.id) || authorizedUsers.contains(user.username)
+        return allowedUsers.contains(user.id) || allowedUsers.contains(user.username)
     }
 
     fun setGroup(userId: String, groupId: String) {
-        userGroups[userId] = groupId
+        userDataSource.setGroup(userId, groupId)
     }
 
     fun getGroup(userId: String): String? {
-        return userGroups[userId]
+        return userDataSource.getGroup(userId)
     }
 }
