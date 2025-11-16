@@ -1,21 +1,35 @@
 package ru.ortemios.imagebot
 
 import eu.vendeli.tgbot.TelegramBot
+import eu.vendeli.tgbot.types.configuration.BotConfiguration
 import eu.vendeli.tgbot.utils.common.onMessage
-import ru.ortemios.imagebot.db.setup.ConnectionFactory
+import okhttp3.OkHttpClient
 import ru.ortemios.imagebot.db.datasource.UserDataSource
+import ru.ortemios.imagebot.db.setup.ConnectionFactory
 import ru.ortemios.imagebot.domain.entity.User
 import ru.ortemios.imagebot.domain.service.UserService
+import ru.ortemios.imagebot.imboard.ImageDownloader
+import ru.ortemios.imagebot.imboard.ImageUrlExtractor
 import ru.ortemios.imagebot.tg.gateway.MessageGateway
 import ru.ortemios.imagebot.tg.res.Commands
-import ru.ortemios.imagebot.tg.res.Messages
 import ru.ortemios.imagebot.tg.usecases.CheckUserAccess
-import ru.ortemios.imagebot.tg.usecases.PostImages
 import ru.ortemios.imagebot.tg.usecases.SetGroup
+import ru.ortemios.imagebot.tg.usecases.postimages.PostImages
+import java.time.Duration
 
 suspend fun main() {
-    val bot = TelegramBot(System.getenv("BOT_TOKEN"))
+    val bot = TelegramBot(
+        token = System.getenv("BOT_TOKEN"),
+        botConfiguration = {
+            updatesListener {
+                updatesPollingTimeout = 60
+            }
+        }
+    )
     val dbConn = ConnectionFactory().createConnection(System.getenv("DB_URL"))
+    val httpClient = OkHttpClient.Builder()
+        .callTimeout(Duration.ofSeconds(10))
+        .build()
 
     val messageGateway = MessageGateway(bot)
     val userDataSource = UserDataSource(dbConn)
@@ -33,13 +47,14 @@ suspend fun main() {
     val postImages = PostImages(
         userService = userService,
         messageGateway = messageGateway,
-        checkUserAccess = checkUserAccess
+        checkUserAccess = checkUserAccess,
+        urlExtractor = ImageUrlExtractor(httpClient),
+        imageDownloader = ImageDownloader(httpClient)
     )
 
-
-    bot.handleUpdates {
-        onMessage {
-            try {
+    try {
+        bot.handleUpdates {
+            onMessage {
                 val user = User(
                     id = update.user.id.toString(),
                     username = update.user.username ?: ""
@@ -48,21 +63,13 @@ suspend fun main() {
 
                 // TODO: refactor command matching
                 Commands.matchCommand(Commands.setGroup, text).let { args ->
-                    if (args != null) {
-                        args.getOrNull(0).let { groupId ->
-                            if (groupId != null) {
-                                setGroupUseCase.execute(user, groupId)
-                            } else {
-                                messageGateway.sendTextMessage(user.id, Messages.incorrectSyntaxError)
-                            }
-                        }
-                    } else {
-                        postImages.execute(user, text)
-                    }
+                    args?.getOrNull(0)?.let { groupId ->
+                        setGroupUseCase.execute(user, groupId)
+                    } ?: postImages.execute(user, text)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
+    } catch (e: Exception) {
+        e.printStackTrace()
     }
 }

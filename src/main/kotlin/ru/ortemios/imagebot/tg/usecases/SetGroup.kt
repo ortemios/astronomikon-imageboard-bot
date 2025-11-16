@@ -14,7 +14,7 @@ class SetGroup(
     suspend fun execute(user: User, groupId: String) {
         if (checkUserAccess.execute(user)) {
             userService.setGroup(user.id, groupId)
-            messageGateway.sendTextMessage(user.id, Messages.groupSetSuccess)
+            messageGateway.sendTextMessage(user.id, Messages.GROUP_SET)
         }
     }
 }

@@ -14,7 +14,7 @@ class CheckUserAccess(
         if (userService.hasAccess(user)) {
             return true
         } else {
-            messageGateway.sendTextMessage(user.id, Messages.accessDeniedError)
+            messageGateway.sendTextMessage(user.id, Messages.ACCESS_DENIED)
             return false
         }
     }
