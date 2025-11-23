@@ -44,7 +44,7 @@ class MessageGateway(private val client: TelegramClient) {
         val method = SendDocument(chatId,
             InputFile(
                 ByteArrayInputStream(content),
-                title
+                title   
             )
         )
         val result = client.execute(method)
