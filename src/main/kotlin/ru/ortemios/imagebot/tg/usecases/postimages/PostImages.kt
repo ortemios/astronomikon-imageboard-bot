@@ -40,7 +40,7 @@ class PostImages(
         }
     }
 
-    private suspend fun downloadImages(user: User, urls: List<String>): List<ImboardImage> {
+    private fun downloadImages(user: User, urls: List<String>): List<ImboardImage> {
         val messageId = messageGateway.sendTextMessage(
             user.id,
             Messages.downloadingImage(1, urls.size)
@@ -62,7 +62,7 @@ class PostImages(
         }
     }
 
-    private suspend fun sendImages(user: User, groupId: String, images: List<ImboardImage>) {
+    private fun sendImages(user: User, groupId: String, images: List<ImboardImage>) {
         val messageId = messageGateway.sendTextMessage(
             user.id,
             Messages.DOWNLOAD_UPLOADING_HD

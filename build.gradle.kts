@@ -15,8 +15,8 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("io.mockk:mockk:1.14.6")
     // tg bot
-    implementation("eu.vendeli:telegram-bot:8.4.1")
-    ksp("eu.vendeli:ksp:8.4.1")
+    implementation("org.telegram:telegrambots-longpolling:9.2.0")
+    implementation("org.telegram:telegrambots-client:9.2.0")
     // db
     implementation("org.xerial:sqlite-jdbc:3.51.0.0")
     implementation("org.flywaydb:flyway-core:9.22.3")

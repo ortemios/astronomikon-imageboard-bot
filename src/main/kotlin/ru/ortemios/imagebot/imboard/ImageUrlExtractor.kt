@@ -13,7 +13,8 @@ class ImageUrlExtractor(private val client: OkHttpClient) {
         val response = client.newCall(request).execute()
         val html = response.body.string()
         val regexp = Regex("https://cdn\\.donmai\\.us/original/[\\w/]*\\.[\\wd]*")
-        return regexp.find(html)?.value ?: throw UrlNotFoundException(pageUrl)
+        val result = regexp.findAll(html).map { it.value }.toSet()
+        return result.maxByOrNull { it.length } ?: throw UrlNotFoundException(pageUrl)
     }
 
     class UrlNotFoundException(val url: String) : RuntimeException("Image URL not found on page: $url")

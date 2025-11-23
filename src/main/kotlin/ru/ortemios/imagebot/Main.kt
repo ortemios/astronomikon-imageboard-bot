@@ -1,9 +1,13 @@
 package ru.ortemios.imagebot
 
-import eu.vendeli.tgbot.TelegramBot
-import eu.vendeli.tgbot.types.configuration.BotConfiguration
-import eu.vendeli.tgbot.utils.common.onMessage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient
+import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication
+import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer
+import org.telegram.telegrambots.meta.api.objects.Update
 import ru.ortemios.imagebot.db.datasource.UserDataSource
 import ru.ortemios.imagebot.db.setup.ConnectionFactory
 import ru.ortemios.imagebot.domain.entity.User
@@ -17,21 +21,15 @@ import ru.ortemios.imagebot.tg.usecases.SetGroup
 import ru.ortemios.imagebot.tg.usecases.postimages.PostImages
 import java.time.Duration
 
+
 suspend fun main() {
-    val bot = TelegramBot(
-        token = System.getenv("BOT_TOKEN"),
-        botConfiguration = {
-            updatesListener {
-                updatesPollingTimeout = 60
-            }
-        }
-    )
+    val botToken = System.getenv("BOT_TOKEN")
+
     val dbConn = ConnectionFactory().createConnection(System.getenv("DB_URL"))
     val httpClient = OkHttpClient.Builder()
-        .callTimeout(Duration.ofSeconds(10))
+        .callTimeout(Duration.ofSeconds(30))
         .build()
-
-    val messageGateway = MessageGateway(bot)
+    val messageGateway = MessageGateway(OkHttpTelegramClient(botToken))
     val userDataSource = UserDataSource(dbConn)
     val userService = UserService(userDataSource)
 
@@ -52,14 +50,17 @@ suspend fun main() {
         imageDownloader = ImageDownloader(httpClient)
     )
 
-    try {
-        bot.handleUpdates {
-            onMessage {
+    val botsApplication = TelegramBotsLongPollingApplication()
+    botsApplication.registerBot(botToken, object: LongPollingSingleThreadUpdateConsumer {
+        override fun consume(update: Update) {
+            runBlocking {
+                val text = update.message.text
+                val from = update.message.from
+
                 val user = User(
-                    id = update.user.id.toString(),
-                    username = update.user.username ?: ""
+                    id = from.id.toString(),
+                    username = from.userName,
                 )
-                val text = update.text
 
                 // TODO: refactor command matching
                 Commands.matchCommand(Commands.setGroup, text).let { args ->
@@ -69,7 +70,8 @@ suspend fun main() {
                 }
             }
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
+    })
+    withContext(Dispatchers.IO) {
+        Thread.currentThread().join()
     }
 }
