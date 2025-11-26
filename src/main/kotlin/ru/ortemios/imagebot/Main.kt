@@ -27,7 +27,7 @@ suspend fun main() {
 
     val dbConn = ConnectionFactory().createConnection(System.getenv("DB_URL"))
     val httpClient = OkHttpClient.Builder()
-        .callTimeout(Duration.ofSeconds(30))
+        .callTimeout(Duration.ofSeconds(60))
         .build()
     val messageGateway = MessageGateway(OkHttpTelegramClient(botToken))
     val userDataSource = UserDataSource(dbConn)

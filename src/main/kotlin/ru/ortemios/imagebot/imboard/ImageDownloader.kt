@@ -18,10 +18,14 @@ class ImageDownloader(private val httpClient: OkHttpClient) {
             .build()
         val response = httpClient.newCall(request).execute()
         val imageBytes = response.body.bytes()
-        return ImboardImage(
-            title = extractImageName(url),
-            content = resize(imageBytes),
-        )
+        try {
+            return ImboardImage(
+                title = extractImageName(url),
+                content = resize(imageBytes),
+            )
+        } catch (e: Throwable) {
+            throw UnsupportedFormatException(url)
+        }
     }
 
     private fun extractImageName(url: String): String {
@@ -59,4 +63,6 @@ class ImageDownloader(private val httpClient: OkHttpClient) {
     private fun scaleByDimension(width: Int, height: Int): Double {
         return maxSizeSum.toDouble() / (width + height)
     }
+
+    class UnsupportedFormatException(val url: String) : RuntimeException("Unsupported image format: $url")
 }

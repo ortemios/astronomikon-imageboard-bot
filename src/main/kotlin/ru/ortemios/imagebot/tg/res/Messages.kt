@@ -3,7 +3,8 @@ package ru.ortemios.imagebot.tg.res
 class Messages {
     companion object {
         const val ACCESS_DENIED = "Доступ запрещён."
-        const val INCORRECT_SYNTAX = "Некорректный синтаксис."
+        const val SERVICE_IS_BUSY = "Сервис загружен, приходите позже."
+        const val GENERAL_ERROR = ""
 
         const val GROUP_SET = "Группа установлена."
         const val GROUP_NOT_SET_ERROR = "Группа для публикации не установлена. " +
@@ -11,6 +12,10 @@ class Messages {
 
         fun downloadUrlNotFound(url: String): String {
             return "Изображение по адресу $url не найдено."
+        }
+
+        fun unsupportedImageFormat(url: String): String {
+            return "Формат изображения по ссылке $url не поддерживается."
         }
 
         fun incorrectUrl(url: String): String {

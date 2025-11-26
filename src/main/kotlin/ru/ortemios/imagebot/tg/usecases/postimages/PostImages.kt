@@ -1,5 +1,6 @@
 package ru.ortemios.imagebot.tg.usecases.postimages
 
+import kotlinx.coroutines.sync.Semaphore
 import ru.ortemios.imagebot.domain.entity.User
 import ru.ortemios.imagebot.domain.service.UserService
 import ru.ortemios.imagebot.imboard.ImageDownloader
@@ -14,69 +15,109 @@ class PostImages(
     private val messageGateway: MessageGateway,
     private val checkUserAccess: CheckUserAccess,
     private val urlExtractor: ImageUrlExtractor,
-    private val imageDownloader: ImageDownloader
+    private val imageDownloader: ImageDownloader,
 ) {
+
+    private val accessSemaphore = Semaphore(1)
 
     suspend fun execute(user: User, messageText: String) {
         if (checkUserAccess.execute(user)) {
-            val groupId = userService.getGroup(user.id)
-            if (groupId != null) {
+            if (accessSemaphore.tryAcquire()) {
                 try {
-                    val urls = MessageUrlExtractor.extract(messageText)
-                    val images = downloadImages(user, urls)
-                    sendImages(user, groupId, images)
-                    messageGateway.sendTextMessage(user.id, Messages.DOWNLOAD_COMPLETE)
-                } catch (e: MessageUrlExtractor.IncorrectUrlException) {
-                    messageGateway.sendTextMessage(user.id, Messages.incorrectUrl(e.url))
-                } catch (e: ImageUrlExtractor.UrlNotFoundException) {
-                    messageGateway.sendTextMessage(user.id, Messages.downloadUrlNotFound(e.url))
+                    executeTask(
+                        TaskInfo(messageId = null, user = user),
+                        messageText
+                    )
                 } catch (e: Exception) {
-                    e.printStackTrace()
-                    messageGateway.sendTextMessage(user.id, Messages.DOWNLOAD_FAILED)
+                    messageGateway.sendTextMessage(user.id, Messages.GENERAL_ERROR)
+                } finally {
+                    accessSemaphore.release()
                 }
             } else {
-                messageGateway.sendTextMessage(user.id, Messages.GROUP_NOT_SET_ERROR)
+                messageGateway.sendTextMessage(user.id, Messages.SERVICE_IS_BUSY)
             }
         }
     }
 
-    private fun downloadImages(user: User, urls: List<String>): List<ImboardImage> {
-        val messageId = messageGateway.sendTextMessage(
-            user.id,
-            Messages.downloadingImage(1, urls.size)
-        )
-        try {
-            return urls.mapIndexed { index, pageUrl ->
-                if (index > 0) {
-                    messageGateway.updateTextMessage(
-                        user.id,
-                        messageId,
-                        Messages.downloadingImage(index + 1, urls.size)
-                    )
-                }
-                val imageUrl = urlExtractor.extract(pageUrl)
-                imageDownloader.download(imageUrl)
+    private fun executeTask(info: TaskInfo, messageText: String) {
+        val groupId = userService.getGroup(info.user.id)
+        if (groupId != null) {
+            try {
+                setTaskStatus(info, Messages.DOWNLOAD_STARTING)
+                val urls = MessageUrlExtractor.extract(messageText)
+                val images = downloadImages(info, urls)
+                sendImages(info, groupId, images)
+                setTaskStatus(info, Messages.DOWNLOAD_COMPLETE)
+            } catch (e: MessageUrlExtractor.IncorrectUrlException) {
+                setTaskStatus(info, Messages.incorrectUrl(e.url))
+            } catch (e: ImageUrlExtractor.UrlNotFoundException) {
+                setTaskStatus(info, Messages.downloadUrlNotFound(e.url))
+            } catch (e: ImageDownloader.UnsupportedFormatException) {
+                setTaskStatus(info, Messages.unsupportedImageFormat(e.url))
+            } catch (e: Exception) {
+                e.printStackTrace()
+                setTaskStatus(info, Messages.DOWNLOAD_FAILED)
             }
-        } finally {
-            messageGateway.deleteMessage(user.id, messageId)
+        } else {
+            setTaskStatus(info, Messages.GROUP_NOT_SET_ERROR)
         }
     }
 
-    private fun sendImages(user: User, groupId: String, images: List<ImboardImage>) {
-        val messageId = messageGateway.sendTextMessage(
-            user.id,
-            Messages.DOWNLOAD_UPLOADING_HD
+    private fun downloadImages(info: TaskInfo, urls: List<String>): List<ImboardImage> {
+        setTaskStatus(
+            info,
+            Messages.downloadingImage(1, urls.size),
         )
-        try {
-            messageGateway.sendImagesGroup(groupId, images.map { it.content })
-            val docIds = images.map { messageGateway.sendImageAsDoc(
-                user.id,
+        return urls.mapIndexed { index, pageUrl ->
+            if (index > 0) {
+                setTaskStatus(
+                    info,
+                    Messages.downloadingImage(index + 1, urls.size),
+                )
+            }
+            val imageUrl = urlExtractor.extract(pageUrl)
+            imageDownloader.download(imageUrl)
+        }
+    }
+
+    private fun sendImages(info: TaskInfo, groupId: String, images: List<ImboardImage>) {
+        setTaskStatus(
+            info,
+            Messages.DOWNLOAD_UPLOADING_SD
+        )
+        messageGateway.sendImagesGroup(groupId, images.map { it.content })
+        setTaskStatus(
+            info,
+            Messages.DOWNLOAD_UPLOADING_HD,
+        )
+        val docIds = images.map {
+            val docId = messageGateway.sendImageAsDoc(
+                info.user.id,
                 it.title,
-                it.content)
+                it.content
+            )
+            info.shouldRecreateMessage = true
+            docId
+        }
+        messageGateway.sendDocsGroup(groupId, docIds)
+    }
+
+    private fun setTaskStatus(taskInfo: TaskInfo, text: String) {
+        val messageId = taskInfo.messageId
+        if (messageId == null || taskInfo.shouldRecreateMessage) {
+            if (messageId != null) {
+                messageGateway.deleteMessage(taskInfo.user.id, messageId)
             }
-            messageGateway.sendDocsGroup(groupId, docIds)
-        } finally {
-            messageGateway.deleteMessage(user.id, messageId)
+            taskInfo.messageId = messageGateway.sendTextMessage(taskInfo.user.id, text)
+            taskInfo.shouldRecreateMessage = false
+        } else {
+            messageGateway.updateTextMessage(taskInfo.user.id, messageId, text)
         }
     }
+
+    private data class TaskInfo(
+        var messageId: Long?,
+        val user: User,
+        var shouldRecreateMessage: Boolean = false,
+    )
 }
