@@ -5,12 +5,15 @@ import okhttp3.Request
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.util.logging.Logger
 import javax.imageio.ImageIO
 import kotlin.math.min
 
 class ImageDownloader(private val httpClient: OkHttpClient) {
     private val maxImageSizeBytes = 10485760
     private val maxSizeSum = 10000
+
+    private val log = Logger.getLogger(this::javaClass.name)
 
     fun download(url: String): ImboardImage {
         val request = Request.Builder()
@@ -24,6 +27,7 @@ class ImageDownloader(private val httpClient: OkHttpClient) {
                 content = resize(imageBytes),
             )
         } catch (e: Throwable) {
+            log.warning(e.stackTraceToString())
             throw UnsupportedFormatException(url)
         }
     }

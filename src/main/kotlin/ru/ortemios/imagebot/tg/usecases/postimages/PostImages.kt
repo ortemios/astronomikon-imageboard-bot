@@ -9,6 +9,7 @@ import ru.ortemios.imagebot.imboard.ImboardImage
 import ru.ortemios.imagebot.tg.res.Messages
 import ru.ortemios.imagebot.tg.gateway.MessageGateway
 import ru.ortemios.imagebot.tg.usecases.CheckUserAccess
+import java.util.logging.Logger
 
 class PostImages(
     private val userService: UserService,
@@ -17,7 +18,7 @@ class PostImages(
     private val urlExtractor: ImageUrlExtractor,
     private val imageDownloader: ImageDownloader,
 ) {
-
+    private val log = Logger.getLogger(this::javaClass.name)
     private val accessSemaphore = Semaphore(1)
 
     suspend fun execute(user: User, messageText: String) {
@@ -29,6 +30,7 @@ class PostImages(
                         messageText
                     )
                 } catch (e: Exception) {
+                    log.warning(e.stackTraceToString())
                     messageGateway.sendTextMessage(user.id, Messages.GENERAL_ERROR)
                 } finally {
                     accessSemaphore.release()
@@ -48,14 +50,18 @@ class PostImages(
                 val images = downloadImages(info, urls)
                 sendImages(info, groupId, images)
                 setTaskStatus(info, Messages.DOWNLOAD_COMPLETE)
+                log.info("Uploaded ${urls.size} images to $groupId")
             } catch (e: MessageUrlExtractor.IncorrectUrlException) {
+                log.warning(e.toString())
                 setTaskStatus(info, Messages.incorrectUrl(e.url))
             } catch (e: ImageUrlExtractor.UrlNotFoundException) {
+                log.warning(e.toString())
                 setTaskStatus(info, Messages.downloadUrlNotFound(e.url))
             } catch (e: ImageDownloader.UnsupportedFormatException) {
+                log.warning(e.toString())
                 setTaskStatus(info, Messages.unsupportedImageFormat(e.url))
             } catch (e: Exception) {
-                e.printStackTrace()
+                log.severe(e.stackTraceToString())
                 setTaskStatus(info, Messages.DOWNLOAD_FAILED)
             }
         } else {

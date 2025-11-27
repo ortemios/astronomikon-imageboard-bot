@@ -1,25 +1,23 @@
 package ru.ortemios.imagebot
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient
-import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication
-import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer
-import org.telegram.telegrambots.meta.api.objects.Update
 import ru.ortemios.imagebot.db.datasource.UserDataSource
 import ru.ortemios.imagebot.db.setup.ConnectionFactory
 import ru.ortemios.imagebot.domain.entity.User
 import ru.ortemios.imagebot.domain.service.UserService
 import ru.ortemios.imagebot.imboard.ImageDownloader
 import ru.ortemios.imagebot.imboard.ImageUrlExtractor
+import ru.ortemios.imagebot.tg.UpdateHandler
 import ru.ortemios.imagebot.tg.gateway.MessageGateway
+import ru.ortemios.imagebot.tg.res.CommandMatcher
 import ru.ortemios.imagebot.tg.res.Commands
+import ru.ortemios.imagebot.tg.res.Messages
 import ru.ortemios.imagebot.tg.usecases.CheckUserAccess
 import ru.ortemios.imagebot.tg.usecases.SetGroup
 import ru.ortemios.imagebot.tg.usecases.postimages.PostImages
 import java.time.Duration
+import java.util.logging.Logger
 
 
 suspend fun main() {
@@ -49,29 +47,30 @@ suspend fun main() {
         urlExtractor = ImageUrlExtractor(httpClient),
         imageDownloader = ImageDownloader(httpClient)
     )
+    val log = Logger.getLogger("Bot")
 
-    val botsApplication = TelegramBotsLongPollingApplication()
-    botsApplication.registerBot(botToken, object: LongPollingSingleThreadUpdateConsumer {
-        override fun consume(update: Update) {
-            runBlocking {
-                val text = update.message.text
-                val from = update.message.from
+    val commandMatcher = CommandMatcher()
+    commandMatcher.registerCommand(Commands.setGroup, 1) { user, args ->
+        setGroupUseCase.execute(user, args[0])
+    }
 
-                val user = User(
-                    id = from.id.toString(),
-                    username = from.userName,
-                )
-
-                // TODO: refactor command matching
-                Commands.matchCommand(Commands.setGroup, text).let { args ->
-                    args?.getOrNull(0)?.let { groupId ->
-                        setGroupUseCase.execute(user, groupId)
-                    } ?: postImages.execute(user, text)
+    UpdateHandler().start(botToken) { update ->
+        if (update.hasMessage()) {
+            val text = update.message.text
+            val from = update.message.from
+            val user = User(
+                id = from.id.toString(),
+                username = from.userName,
+            )
+            log.info("Received message `$text` from `$user`")
+            try {
+                if (!commandMatcher.handle(user, text)) {
+                    postImages.execute(user, text)
                 }
+            } catch (e: CommandMatcher.IncorrectSyntaxException) {
+                messageGateway.sendTextMessage(user.id, Messages.INCORRECT_SYNTAX)
             }
         }
-    })
-    withContext(Dispatchers.IO) {
-        Thread.currentThread().join()
     }
 }
+
