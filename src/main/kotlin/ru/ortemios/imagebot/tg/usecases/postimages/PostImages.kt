@@ -45,8 +45,8 @@ class PostImages(
         val groupId = userService.getGroup(info.user.id)
         if (groupId != null) {
             try {
-                setTaskStatus(info, Messages.DOWNLOAD_STARTING)
                 val urls = MessageUrlExtractor.extract(messageText)
+                setTaskStatus(info, Messages.DOWNLOAD_STARTING)
                 val images = downloadImages(info, urls)
                 sendImages(info, groupId, images)
                 setTaskStatus(info, Messages.DOWNLOAD_COMPLETE)
